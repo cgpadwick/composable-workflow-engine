@@ -67,14 +67,22 @@ def _parse(args: list[str]) -> tuple[dict, dict, dict]:
     return overrides, shared, opts
 
 
+# noise dirs the run-summary file-diff should ignore (tooling/env/data, not user output)
+_SNAPSHOT_SKIP = {".git", ".venv", "venv", "__pycache__", ".pytest_cache",
+                  "node_modules", "data", ".mypy_cache", ".ruff_cache"}
+
+
 def _snapshot(root: Path) -> dict:
     snap = {}
     for p in root.rglob("*"):
-        if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc":
-            try:
-                snap[p] = p.stat().st_mtime
-            except OSError:
-                pass
+        if not p.is_file() or p.suffix in (".pyc", ".pyo"):
+            continue
+        if _SNAPSHOT_SKIP & set(p.relative_to(root).parts):
+            continue
+        try:
+            snap[p] = p.stat().st_mtime
+        except OSError:
+            pass
     return snap
 
 

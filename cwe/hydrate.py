@@ -120,6 +120,7 @@ def build_flow(flow_yaml, provider=None, provider_overrides: dict | None = None,
     seed = dict(spec.get("shared", {}))
     seed.setdefault("workspace", str(ws))
     seed.setdefault("venv", venv)
+    seed.setdefault("flow_dir", str(flow_dir.resolve()))   # for bundled scripts
     return Subflow(start=steps[0]), seed
 
 
