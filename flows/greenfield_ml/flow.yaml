@@ -1,0 +1,75 @@
+# Greenfield ML auto-research: build a baseline classifier, then hill-climb until
+# the target metric is met. Mirrors MLE-Beast's pipeline on cwe primitives.
+#
+#   setup(cmd) -> git_init(cmd) -> download_data -> [implement -> verify]x3
+#     -> train -> evaluate(capture best_score) -> baseline_commit(cmd)
+#     -> hillclimb counting_loop (until target or plateau):
+#          propose -> [implement -> verify]x3 -> train -> evaluate(candidate)
+#          -> keep_or_revert(cmd: git keep/revert, update best_score/failures)
+#
+# Run:  OPENROUTER_API_KEY=... cwe run flows/greenfield_ml/flow.yaml \
+#         --workspace /tmp/cwe_mnist --set target_accuracy=0.97
+provider: { type: openrouter, model: deepseek/deepseek-v4-flash }
+workspace: /tmp/cwe_mnist
+shared:
+  task: "Build an image classifier for the MNIST handwritten digit dataset (10 classes, 28x28 grayscale). Metric: classification accuracy on a held-out test split (higher is better)."
+  target_accuracy: 0.97
+  lower_is_better: false
+  best_score: -1.0
+  candidate_score: -1.0
+  consecutive_failures: 0
+  max_failures: 3
+  ml_stack: pytorch-cu121      # ml-frameworks stack (GPU); CPU box auto-falls-back
+
+workflow:
+  # ---- environment: ml-frameworks stack on GPU, CPU fallback otherwise ----
+  - id: setup
+    type: command
+    run: 'python3 "{{ flow_dir }}/setup_env.py" --workspace "{{ workspace }}" --venv "{{ venv }}" --stack "{{ ml_stack }}"'
+  - { id: git_init, type: agent, skill: git_init, max_steps: 15 }
+
+  # ---- data ----
+  - { id: data, type: agent, skill: download_data, max_steps: 25 }
+
+  # ---- baseline: implement -> verify (retry), then train + evaluate ----
+  - id: baseline_build
+    type: retry_loop
+    max_iterations: 3
+    action: { id: implement, type: agent, skill: implement, max_steps: 40 }
+    check:  { id: verify,    type: agent, skill: verify,    max_steps: 20 }
+  - { id: train, type: agent, skill: train, max_steps: 30 }
+  - id: evaluate
+    type: agent
+    skill: evaluate
+    max_steps: 20
+    set: { best_score: "Test accuracy:\\s*([0-9]*\\.?[0-9]+)" }
+  - { id: baseline_commit, type: agent, skill: baseline_commit, max_steps: 10 }
+
+  # ---- hill-climb until target met or plateau ----
+  - id: hillclimb
+    type: counting_loop
+    max_iterations: 6
+    exit_when: "(best_score <= target_accuracy if lower_is_better else best_score >= target_accuracy) or consecutive_failures >= max_failures"
+    body:
+      - id: propose
+        type: agent
+        skill: propose
+        max_steps: 15
+        set: { current_proposal: "(?s)(.+)" }   # capture the whole proposal text
+      - id: hc_build
+        type: retry_loop
+        max_iterations: 3
+        action: { id: hc_implement, type: agent, skill: implement, max_steps: 40 }
+        check:  { id: hc_verify,    type: agent, skill: verify,    max_steps: 20 }
+      - { id: hc_train, type: agent, skill: train, max_steps: 30 }
+      - id: hc_eval
+        type: agent
+        skill: evaluate
+        max_steps: 20
+        set: { candidate_score: "Test accuracy:\\s*([0-9]*\\.?[0-9]+)" }
+      - id: keep_or_revert
+        type: command
+        run: 'python3 "{{ flow_dir }}/keep_or_revert.py" --candidate "{{ candidate_score }}" --best "{{ best_score }}" --failures "{{ consecutive_failures }}" --lower-is-better "{{ lower_is_better }}"'
+        set:
+          best_score: "BEST_SCORE=([0-9]*\\.?[0-9]+)"
+          consecutive_failures: "FAILURES=([0-9]+)"
