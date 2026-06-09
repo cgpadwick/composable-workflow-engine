@@ -1,6 +1,6 @@
 # SAAGE — Super Awesome Agentic Graph Engine
 
-[![CI](https://github.com/cgpadwick/composable-workflow-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/cgpadwick/composable-workflow-engine/actions/workflows/ci.yml)
+[![CI](https://github.com/cgpadwick/saage/actions/workflows/ci.yml/badge.svg)](https://github.com/cgpadwick/saage/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 **SAAGE** (`saage`) is a **deterministic** composable agentic workflow engine. Control flow
