@@ -9,8 +9,18 @@ description = "A tiny deterministic composable agentic workflow engine on Pocket
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
+authors = [{ name = "Chris Padwick" }]
+keywords = ["llm", "agents", "agentic", "workflow", "orchestration", "pocketflow", "deterministic"]
 classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
 ]
 dependencies = [
     "pocketflow",
@@ -25,6 +35,11 @@ dev = ["pytest"]
 
 [project.scripts]
 saage = "saage.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/cgpadwick/saage"
+Repository = "https://github.com/cgpadwick/saage"
+Issues = "https://github.com/cgpadwick/saage/issues"
 
 [tool.setuptools.packages.find]
 include = ["saage*"]
