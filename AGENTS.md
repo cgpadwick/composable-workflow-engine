@@ -1,4 +1,4 @@
-# AGENTS.md — building flows in `cwe`
+# AGENTS.md — building flows in `saage`
 
 This file is for **coding agents**. Read it (not the whole codebase) to author new
 flows and skills for this engine. It is complete enough to build a working flow
@@ -6,7 +6,7 @@ from scratch; drop into the source only when you need an internal detail.
 
 ## Mental model (read this first)
 
-`cwe` is a **deterministic** workflow engine. *Control flow* — loops, retries,
+`saage` is a **deterministic** workflow engine. *Control flow* — loops, retries,
 polling, exit conditions, ordering — is owned by **code/YAML**, never by an LLM's
 judgment. LLMs are used only **inside a step** to produce *content* (write code,
 write SQL, review a diff, summarize). So when you design a flow you are deciding:
@@ -26,11 +26,11 @@ so nothing else persists).
 | `flows/<name>/flow.yaml` | a flow: provider + shared seed + the `workflow` step list |
 | `flows/<name>/<skill>/skill.md` | one skill = frontmatter + instruction body |
 | `flows/<name>/<skill>/*.py` | optional helper scripts a step runs (see *Helpers*) |
-| `cwe/hydrate.py` | YAML → runnable flow (the schema authority) |
-| `cwe/nodes.py` | `AgentNode`, `CommandNode`, `render()`, loop guards |
-| `cwe/primitives.py` | `retry_loop`, `polling_loop`, `counting_loop` |
-| `cwe/tools.py` | the harness tools (file CRUD, `run_command`, git) |
-| `cwe/skills.py` | how `skill.md` is parsed |
+| `saage/hydrate.py` | YAML → runnable flow (the schema authority) |
+| `saage/nodes.py` | `AgentNode`, `CommandNode`, `render()`, loop guards |
+| `saage/primitives.py` | `retry_loop`, `polling_loop`, `counting_loop` |
+| `saage/tools.py` | the harness tools (file CRUD, `run_command`, git) |
+| `saage/skills.py` | how `skill.md` is parsed |
 
 Existing flows are the best templates: `story_writer` (counting_loop),
 `fix_failing_test` (retry_loop), `poll_job` (polling_loop), `guessing_game`
@@ -40,7 +40,7 @@ Existing flows are the best templates: `story_writer` (counting_loop),
 
 ```yaml
 provider: { type: openrouter, model: "deepseek/deepseek-v4-flash" }   # required
-workspace: /tmp/cwe_run        # optional: tool/command cwd. default = the flow dir
+workspace: /tmp/saage_run        # optional: tool/command cwd. default = the flow dir
 venv: .venv                    # optional: auto-activated for commands once it exists
 shared:                        # optional: initial shared-store values
   question: "..."
@@ -188,7 +188,7 @@ that occurs once), `delete_file`, `run_command`, and git: `git_status`,
 ## Running a flow
 
 ```bash
-cwe run flows/<name>/flow.yaml \
+saage run flows/<name>/flow.yaml \
   [--workspace DIR] [--venv DIR] \
   [--provider openrouter --model "..."] [--base-url URL] \
   [--config engine.yaml] \              # tune the run_command safety policy
@@ -214,7 +214,7 @@ outcomes, files written) at the end. `-v` for tool/output detail, `-q` to quiet.
 
 **Hydrate-check** (no API calls — validates YAML + skill wiring):
 ```bash
-python3 -c "from cwe.hydrate import build_flow; build_flow('flows/<name>/flow.yaml', provider=object(), workspace='/tmp/_chk'); print('ok')"
+python3 -c "from saage.hydrate import build_flow; build_flow('flows/<name>/flow.yaml', provider=object(), workspace='/tmp/_chk'); print('ok')"
 ```
 
 Then a **live** run against a real provider with a throwaway `--workspace`. The
