@@ -11,6 +11,7 @@ from pathlib import Path
 
 import yaml
 
+from .config import EngineConfig, load_engine_config
 from .llm import AnthropicProvider, OpenAIProvider
 from .nodes import AgentNode, CommandNode
 from .retry import RetryPolicy
@@ -85,7 +86,8 @@ def build_step(spec: dict, ctx: Context):
 
 
 def build_flow(flow_yaml, provider=None, provider_overrides: dict | None = None,
-               workspace=None, venv: str | None = None):
+               workspace=None, venv: str | None = None,
+               config: "str | Path | EngineConfig | None" = None):
     """Return (flow, shared).
 
     `provider` injects a ready provider object (used by tests). Otherwise the
@@ -98,11 +100,16 @@ def build_flow(flow_yaml, provider=None, provider_overrides: dict | None = None,
     Skills are always loaded from the flow file's directory. `venv` (arg →
     `venv:` in YAML → default ".venv") is auto-activated for commands once it
     exists on disk.
+
+    `config` is the engine config governing the `run_command` safety policy: an
+    `EngineConfig`, a path to an engine YAML, or None for the safe built-in
+    denylist (always applied, so the default execution path is restricted).
     """
     flow_yaml = Path(flow_yaml)
     log.info("loading flow: %s", flow_yaml)
     spec = yaml.safe_load(flow_yaml.read_text())
     flow_dir = flow_yaml.parent
+    cfg = config if isinstance(config, EngineConfig) else load_engine_config(config)
     # resolve so {{ workspace }} is always an absolute, canonical path (matching
     # flow_dir below) — a relative --workspace otherwise leaks into prompts/commands.
     ws = Path(workspace or spec.get("workspace") or flow_dir).expanduser().resolve()
@@ -120,7 +127,8 @@ def build_flow(flow_yaml, provider=None, provider_overrides: dict | None = None,
     skills = load_skills(flow_dir)
     log.info("loaded %d skill(s): %s", len(skills), ", ".join(skills) or "(none)")
     ctx = Context(root=ws, provider=provider, skills=skills,
-                  tools=default_tools(ws, venv=venv), venv=venv)
+                  tools=default_tools(ws, venv=venv, command_policy=cfg.command_policy),
+                  venv=venv)
     steps = [build_step(s, ctx) for s in spec["workflow"]]
     for a, b in zip(steps, steps[1:]):
         a >> b
@@ -134,10 +142,11 @@ def build_flow(flow_yaml, provider=None, provider_overrides: dict | None = None,
 
 def run_flow(flow_yaml, provider=None, shared: dict | None = None,
              provider_overrides: dict | None = None,
-             workspace=None, venv: str | None = None) -> dict:
+             workspace=None, venv: str | None = None,
+             config: "str | Path | EngineConfig | None" = None) -> dict:
     flow, seed = build_flow(flow_yaml, provider=provider,
                             provider_overrides=provider_overrides,
-                            workspace=workspace, venv=venv)
+                            workspace=workspace, venv=venv, config=config)
     if shared:
         seed.update(shared)
     log.info("starting run%s", f" (seed: {seed})" if seed else "")

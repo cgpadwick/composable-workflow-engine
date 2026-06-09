@@ -33,6 +33,9 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--provider", help="override the flow's provider type")
     run.add_argument("--model", help="override the model")
     run.add_argument("--base-url", dest="base_url", help="override the provider base URL")
+    run.add_argument("--config", metavar="engine.yaml",
+                     help="engine config YAML tuning the run_command safety policy "
+                          "(default: the built-in denylist)")
     run.add_argument("--set", dest="overrides", metavar="KEY=VALUE", action="append",
                      default=[], help="seed/override a shared-store value (repeatable; "
                                       "value is parsed as JSON when possible)")
@@ -113,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
 
     overrides = {"type": args.provider, "model": args.model, "base_url": args.base_url}
     flow, seed = build_flow(args.flow, provider_overrides=overrides,
-                            workspace=args.workspace, venv=args.venv)
+                            workspace=args.workspace, venv=args.venv, config=args.config)
     seed.update(_parse_set(args.overrides))
     root = Path(seed["workspace"])               # the resolved workspace
 
