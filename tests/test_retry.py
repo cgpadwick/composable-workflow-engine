@@ -141,3 +141,33 @@ def test_jitter_bounds():
     lo = p.delay_for(1, rng=lambda: 0.0)             # -25%
     hi = p.delay_for(1, rng=lambda: 1.0)             # +25%
     assert lo == pytest.approx(3.0) and hi == pytest.approx(5.0)
+
+
+def test_jitter_never_exceeds_max_delay():
+    # jitter is applied BEFORE the cap, so even max positive jitter on a delay that
+    # already blew past max_delay must not exceed the cap.
+    p = RetryPolicy(base_delay=100.0, multiplier=2.0, max_delay=30.0, jitter=0.25)
+    assert p.delay_for(5, rng=lambda: 1.0) == 30.0   # 100*16*1.25 -> clamped to 30
+
+
+# --------------------------------------------------------------------------- #
+# max_attempts edge: never silently skip the call
+# --------------------------------------------------------------------------- #
+def test_max_attempts_below_one_still_calls_once():
+    slept, sleep = _recorder()
+    calls = []
+    out = call_with_retry(lambda: calls.append(1) or "ok",
+                          policy=RetryPolicy(max_attempts=0), sleep=sleep)
+    assert out == "ok" and calls == [1] and slept == []   # one try, no retry, no None
+
+
+def test_max_attempts_below_one_failing_reraises_after_one_try():
+    attempts = {"n": 0}
+
+    def fn():
+        attempts["n"] += 1
+        raise FakeStatusError(500)
+
+    with pytest.raises(FakeStatusError):
+        call_with_retry(fn, policy=RetryPolicy(max_attempts=0), sleep=lambda d: None)
+    assert attempts["n"] == 1

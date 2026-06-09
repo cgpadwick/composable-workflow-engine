@@ -39,9 +39,9 @@ class RetryPolicy:
     def delay_for(self, attempt: int, rng: Callable[[], float] = random.random) -> float:
         """Backoff before the retry that follows a failed `attempt` (1-based)."""
         raw = self.base_delay * (self.multiplier ** (attempt - 1))
-        raw = min(self.max_delay, raw)
         raw *= 1.0 + self.jitter * (2.0 * rng() - 1.0)   # rng()=0.5 -> no jitter
-        return max(0.0, raw)
+        return max(0.0, min(self.max_delay, raw))        # clamp AFTER jitter, so a
+        #                                                  jittered delay never exceeds max_delay
 
 
 def is_retryable_error(exc: BaseException) -> bool:
@@ -73,16 +73,17 @@ def call_with_retry(fn: Callable[[], object], *,
     `policy.max_attempts` times. Non-retryable errors, and the final attempt's
     error, propagate to the caller unchanged."""
     policy = policy or RetryPolicy()
-    for attempt in range(1, policy.max_attempts + 1):
+    attempts = max(1, policy.max_attempts)   # always call fn at least once
+    for attempt in range(1, attempts + 1):
         try:
             return fn()
         except BaseException as exc:   # noqa: BLE001 - re-raised unless retryable
-            if attempt >= policy.max_attempts or not retryable(exc):
+            if attempt >= attempts or not retryable(exc):
                 if attempt > 1:
                     log.warning("%s failed after %d attempt(s): %s",
                                 what, attempt, exc)
                 raise
             delay = policy.delay_for(attempt, rng)
             log.warning("%s failed (attempt %d/%d): %s — retrying in %.2fs",
-                        what, attempt, policy.max_attempts, exc, delay)
+                        what, attempt, attempts, exc, delay)
             sleep(delay)
