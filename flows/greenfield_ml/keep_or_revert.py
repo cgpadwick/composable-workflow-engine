@@ -60,7 +60,24 @@ def main() -> None:
     with open("research_log.md", "a") as f:
         f.write(f"- candidate={cand} best={best} -> {status}\n")
 
+    # structured per-experiment record for the final report. experiments.jsonl is
+    # gitignored, so it survives the `git clean` above and accumulates across the run.
+    _record_experiment(cand, best, improved)
+
     print(f"RESULT={status} BEST_SCORE={best} FAILURES={fails}")
+
+
+def _record_experiment(candidate: float, best: float, kept: bool) -> None:
+    import json
+    step = 1
+    if os.path.exists("experiments.jsonl"):
+        step = 1 + sum(1 for _ in open("experiments.jsonl"))
+    proposal = ""
+    if os.path.exists("proposals/latest.md"):
+        proposal = open("proposals/latest.md").read().strip()
+    with open("experiments.jsonl", "a") as f:
+        f.write(json.dumps({"step": step, "candidate": candidate, "best": best,
+                            "kept": kept, "proposal": proposal}) + "\n")
 
 
 if __name__ == "__main__":

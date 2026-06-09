@@ -11,8 +11,10 @@ You set up git for the workspace. Commands run at the workspace root.
 
 1. Check whether the workspace is already a git repo: `git rev-parse --git-dir`.
    If it already is one, do nothing and finish.
-2. Otherwise, write a `.gitignore` excluding build/data/env artifacts:
-   `.venv/`, `data/`, `__pycache__/`, `*.pyc`, `logs/`, `checkpoints/`, `*.pt`, `*.pth`.
+2. Otherwise, write a `.gitignore` excluding build/data/env artifacts AND the
+   hill-climb's own bookkeeping (which must survive `git clean` between experiments):
+   `.venv/`, `data/`, `__pycache__/`, `*.pyc`, `logs/`, `checkpoints/`, `*.pt`, `*.pth`,
+   `proposals/`, `experiments.jsonl`, `report.html`, `report_assets/`.
 3. Run `git init`, then set a local commit identity so commits don't fail on a
    box without global git config:
    `git config user.email cwe@local` and `git config user.name cwe`.
