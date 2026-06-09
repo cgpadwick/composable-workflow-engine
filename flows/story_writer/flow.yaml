@@ -1,0 +1,13 @@
+# Story writer: two authors alternate (write a scene, add a twist), looping 3
+# times, then a critic reviews the finished story. Demonstrates counting_loop
+# with a multi-node body followed by a terminal node.
+provider: { type: openrouter, model: deepseek/deepseek-v4-flash }
+
+workflow:
+  - id: draft
+    type: counting_loop
+    max_iterations: 3
+    body:
+      - { id: scene, type: agent, skill: write_scene }
+      - { id: twist, type: agent, skill: add_twist }
+  - { id: critique, type: agent, skill: review }
