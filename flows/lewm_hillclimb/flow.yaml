@@ -39,6 +39,10 @@ shared:
   candidate_score: -1.0
   consecutive_failures: 0
   train_epochs: 8                # FIXED budget per experiment (user-set); ~2.5 h/epoch
+  num_workers: 6                 # dataloader workers; raise on big cloud boxes
+                                 # (--set num_workers=24 on a 30-vCPU A100). Safe:
+                                 # batch order comes from the seeded sampler; workers
+                                 # only parallelize chunk fetch + decompression.
   stablewm_home: "$HOME/.stable-wm"   # where datasets/checkpoints live (shell-expanded)
   exp_name: lewm_cube_exp        # checkpoint dir each experiment trains into
   best_name: lewm_cube_best      # best checkpoint dir, promoted on every keep
@@ -56,7 +60,7 @@ workflow:
     run: 'STABLEWM_HOME="{{ stablewm_home }}" python3 "{{ flow_dir }}/clean_ckpt.py" --name {{ exp_name }} --name {{ smoke_name }}'
   - id: baseline_train
     type: command
-    run: 'STABLEWM_HOME="{{ stablewm_home }}" python train.py data=ogb output_model_name={{ exp_name }} subdir={{ exp_name }} trainer.max_epochs={{ train_epochs }} wandb.enabled=False'
+    run: 'STABLEWM_HOME="{{ stablewm_home }}" python train.py data=ogb output_model_name={{ exp_name }} subdir={{ exp_name }} trainer.max_epochs={{ train_epochs }} num_workers={{ num_workers }} wandb.enabled=False'
   - id: baseline_eval
     type: command
     run: 'STABLEWM_HOME="{{ stablewm_home }}" python eval.py --config-name=cube.yaml policy={{ exp_name }}/weights_epoch_{{ train_epochs }}.pt solver.n_steps=10'
@@ -100,7 +104,7 @@ workflow:
         run: 'STABLEWM_HOME="{{ stablewm_home }}" python3 "{{ flow_dir }}/clean_ckpt.py" --name {{ exp_name }} --name {{ smoke_name }}'
       - id: train
         type: command
-        run: 'STABLEWM_HOME="{{ stablewm_home }}" python train.py data=ogb output_model_name={{ exp_name }} subdir={{ exp_name }} trainer.max_epochs={{ train_epochs }} wandb.enabled=False'
+        run: 'STABLEWM_HOME="{{ stablewm_home }}" python train.py data=ogb output_model_name={{ exp_name }} subdir={{ exp_name }} trainer.max_epochs={{ train_epochs }} num_workers={{ num_workers }} wandb.enabled=False'
       - id: eval
         type: command
         run: 'STABLEWM_HOME="{{ stablewm_home }}" python eval.py --config-name=cube.yaml policy={{ exp_name }}/weights_epoch_{{ train_epochs }}.pt solver.n_steps=10'

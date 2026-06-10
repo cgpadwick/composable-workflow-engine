@@ -71,4 +71,9 @@ if [ ! -f "$TARGET" ]; then
   rm -rf "$SCRATCH"
 fi
 echo "dataset ok: $(du -h "$TARGET" | cut -f1) at $TARGET"
+
+# warm the page cache in the background — boxes with RAM > dataset size (an
+# A100 node has ~200GiB) then serve epoch-1 reads from memory instead of disk
+nohup cat "$TARGET" > /dev/null 2>&1 &
+
 echo CLOUD_SETUP_OK
