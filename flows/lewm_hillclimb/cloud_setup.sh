@@ -22,7 +22,13 @@ if [ ! -e .venv/bin/python ]; then
 fi
 VIRTUAL_ENV="$PWD/.venv" uv pip install --quiet \
   "stable-worldmodel[train,env] @ git+https://github.com/galilai-group/stable-worldmodel.git@${SWM_REF}" \
-  "huggingface_hub[cli,hf_transfer]"
+  "huggingface_hub[cli,hf_transfer]" \
+  trackio \
+  hdf5plugin
+# trackio: train.py imports it directly; not a stable-worldmodel dep.
+# hdf5plugin: without it the hdf5 Format plugin silently fails to register
+# (optional-import pattern) and load_dataset reports the misleading
+# "No format detected for ...cube_single_expert.h5".
 
 # PyPI torch (2.12 -> +cu130) needs driver r580+; Lambda images ship r570
 # (CUDA <= 12.8). If torch can't see the GPU, swap to the newest cu128 pair.
