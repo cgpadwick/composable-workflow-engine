@@ -108,11 +108,26 @@ def _dispatch(args: argparse.Namespace) -> int:
         print("  saage remote add-target <name> --host <host> [--user <user>]")
         storage = storage_config()
         if storage:
+            if len(storage.access_key) != 32:
+                raise CredsError(
+                    f"[storage] access_key has length {len(storage.access_key)}, "
+                    f"expected 32. For R2, use the S3 credential pair shown when "
+                    f"the API token is created: access_key = Access Key ID "
+                    f"(32 chars), secret_key = Secret Access Key (64 chars) — "
+                    f"NOT the Token value."
+                )
             from .observe import _bucket_client
             probe = "saage-init-probe"
             client = _bucket_client(storage)
-            client.put_object(Bucket=storage.bucket, Key=probe, Body=b"ok")
-            client.delete_object(Bucket=storage.bucket, Key=probe)
+            try:
+                client.put_object(Bucket=storage.bucket, Key=probe, Body=b"ok")
+                client.delete_object(Bucket=storage.bucket, Key=probe)
+            except Exception as exc:
+                raise CredsError(
+                    f"[storage] probe write to s3://{storage.bucket} failed: {exc}\n"
+                    f"check the endpoint, bucket name, and that the API token has "
+                    f"Object Read & Write on this bucket"
+                ) from exc
             print(f"storage    s3://{storage.bucket} @ {storage.endpoint} — writable ✓")
         else:
             print("storage    (none — artifacts stay on the node; add a [storage] "

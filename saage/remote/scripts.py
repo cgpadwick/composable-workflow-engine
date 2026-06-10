@@ -124,12 +124,13 @@ venv/bin/saage run "flow/{spec.flow_file}" --workspace "$PWD/ws" {venv_flag} {se
 RC=$?
 
 kill "$SIDECAR" "$WATCHDOG" 2>/dev/null
-collect
-# push kept experiments out, when the workspace has a pushable origin
-( cd ws && git push -q origin "${{WS_RUN_BRANCH:-}}" 2>/dev/null ) || true
+# final phase FIRST, then collect — so the last mirror push carries it
 if [ -f watchdog_fired ]; then status timeout 124
 elif [ "$RC" -eq 0 ]; then status done 0
 else status failed "$RC"; fi
+collect
+# push kept experiments out, when the workspace has a pushable origin
+( cd ws && git push -q origin "${{WS_RUN_BRANCH:-}}" 2>/dev/null ) || true
 rm -f run_env            # secrets do not outlive the run
 """
 

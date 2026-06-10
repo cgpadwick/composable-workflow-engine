@@ -57,6 +57,15 @@ def test_secrets_never_outlive_the_run():
     assert "rm -f run_env" in stop_sh(_spec())
 
 
+def test_final_status_is_written_before_the_last_mirror_push():
+    # regression: the bucket must see the final phase — status done/failed has
+    # to land in status.json BEFORE the closing collect() mirrors it out
+    script = start_sh(_spec(r2=True))
+    tail = script[script.index('kill "$SIDECAR"'):]
+    assert tail.index("status done") < tail.index("\ncollect")   # the call, not the comment
+    assert "status killed" not in tail  # stop.sh owns the killed phase
+
+
 def test_venv_flag_passthrough():
     assert "--venv .venv-custom" in start_sh(_spec(venv_arg=".venv-custom"))
     assert "--venv" not in start_sh(_spec())
