@@ -1,6 +1,7 @@
 # Remote Handoff for saage Flows
 
-**Status:** plan / not implemented
+**Status:** v1 implemented (`saage/remote/`, tests in `tests/remote/`) — see
+"Implementation status" at the bottom for deltas from this plan.
 **Date:** 2026-06-09
 **Supersedes:** `docs/cloud_one_button_plan.md` (earlier draft; "cloud" framing)
 
@@ -616,3 +617,39 @@ to the exact v1 handoff path; `terminate()` runs after the run stops.
 6. **`compute:` preflight on heterogeneous boxes** — what "gpu: a100" means
    when the target is a Spark (GB10) or a 4090: warn vs refuse; probably
    `--force` to override.
+
+---
+
+## 12. Implementation status (2026-06-09)
+
+v1 is implemented in `saage/remote/` (creds, state, sshio, workspace, scripts,
+target, handoff, observe, cli) with offline unit tests plus ssh-gated
+integration tests (`SAAGE_SSH_TESTS=1 pytest tests/remote/`). Deltas from the
+plan above, decided during the build:
+
+- **No bucket at all in v1** (user decision — no R2 account yet): the
+  node-side run dir is the artifact store. The sidecar copies ledgers/results
+  into `~/.saage_runs/<run_id>/artifacts/`; `status`/`logs`/`fetch` read it
+  over SSH. An R2/S3 layer later just mirrors that directory — §5.2's layout
+  is unchanged, only its transport.
+- **Engine source travels by rsync of the laptop checkout**, not `git clone`
+  of a pinned ref — works for unpushed branches and needs no saage repo
+  credential on the node. The manifest does not yet record a saage sha.
+- **LLM key is "reuse" mode only**: the laptop's provider env var (per the
+  flow's `provider.type`) is pushed into the per-run `run_env`. Per-run capped
+  keys (§4.2) remain future work.
+- **Run branches are `saage-run-<run_id>`** for every flow (plan said
+  flow-specific names). The lewm `setup_experiment.py --branch` param (§3.1)
+  is still to do, in the flow not the engine.
+- **Node layout**: `~/.saage_runs/<run_id>/{saage,venv,flow,ws,artifacts,...}`
+  per run; tmux session `saage-<run_id>`; one run per box enforced by
+  preflight (any `saage-*` session = busy).
+- **Bundle mode is one-way for commits in v1**: the node clones the bundle,
+  but with no pushable origin the run's *commits* don't come back yet
+  (`final.bundle` at exit is unimplemented) — ledgers/artifacts still return
+  via fetch. Branch mode round-trips commits fully (integration-tested
+  against a local bare origin).
+- **`SAAGE_GIT_TOKEN`** is honored (rewrites an https origin URL for the
+  node's clone/push) but has not been exercised against real GitHub yet.
+- **Engine changes required: none** held true — `saage/cli.py` only gained
+  the `remote` subcommand dispatch; `tomli` was added as a <3.11 dependency.

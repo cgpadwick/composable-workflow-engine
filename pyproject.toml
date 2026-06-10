@@ -28,6 +28,7 @@ dependencies = [
     "jinja2",
     "openai",     # also covers OpenRouter + local OpenAI-compatible servers
     "anthropic",
+    "tomli; python_version < '3.11'",   # saage.remote reads credentials.toml
 ]
 
 [project.optional-dependencies]
@@ -47,5 +48,6 @@ include = ["saage*"]
 [tool.pytest.ini_options]
 markers = [
     "live: hits a real LLM provider; skipped unless SAAGE_LIVE_PROVIDER is set",
+    "ssh: needs a local sshd + authorized saage key; skipped unless SAAGE_SSH_TESTS is set",
 ]
 testpaths = ["tests"]

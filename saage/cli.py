@@ -23,6 +23,8 @@ _NOISY = ("httpx", "httpcore", "openai", "anthropic", "urllib3")
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="saage", description="Run a saage workflow.")
     sub = parser.add_subparsers(dest="command", required=True)
+    from .remote.cli import add_parser as _add_remote_parser
+    _add_remote_parser(sub)
     run = sub.add_parser("run", help="hydrate and run a flow")
     run.add_argument("flow", metavar="flow.yaml", help="path to the flow YAML")
     run.add_argument("--workspace", metavar="DIR",
@@ -112,6 +114,10 @@ def _print_summary(result: dict, before: dict, after: dict, root: Path) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
+    if args.command == "remote":
+        _setup_logging(verbose=False, quiet=False)
+        from .remote.cli import dispatch
+        return dispatch(args)
     _setup_logging(args.verbose, args.quiet)
 
     overrides = {"type": args.provider, "model": args.model, "base_url": args.base_url}
