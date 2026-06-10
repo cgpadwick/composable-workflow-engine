@@ -11,7 +11,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .creds import get_target, list_targets
+from .creds import Storage, get_target, list_targets, storage_config
 from .state import RunState, find_run, list_runs
 from .target import SshTarget
 
@@ -19,6 +19,44 @@ log = logging.getLogger("saage.remote")
 
 # node phases that mean "the run is over"
 _FINAL = {"done", "failed", "timeout", "killed"}
+
+
+def _bucket_client(storage: Storage):
+    try:
+        import boto3
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "reading the R2 mirror needs boto3 on this machine: pip install boto3"
+        ) from exc
+    return boto3.client("s3", endpoint_url=storage.endpoint,
+                        aws_access_key_id=storage.access_key,
+                        aws_secret_access_key=storage.secret_key,
+                        region_name=storage.region)
+
+
+def _status_from_bucket(storage: Storage, run_id: str) -> dict:
+    import json as _json
+    client = _bucket_client(storage)
+    try:
+        obj = client.get_object(Bucket=storage.bucket,
+                                Key=f"{storage.run_prefix(run_id)}/status.json")
+        return _json.loads(obj["Body"].read())
+    except Exception:
+        return {}
+
+
+def _fetch_from_bucket(storage: Storage, run_id: str, dest: Path) -> list[str]:
+    client = _bucket_client(storage)
+    prefix = storage.run_prefix(run_id)
+    listed = client.list_objects_v2(Bucket=storage.bucket, Prefix=prefix + "/")
+    got = []
+    for obj in listed.get("Contents", []):
+        name = obj["Key"].rsplit("/", 1)[-1]
+        if not name:
+            continue
+        client.download_file(storage.bucket, obj["Key"], str(dest / name))
+        got.append(name)
+    return got
 
 
 def _node_for(rs: RunState) -> SshTarget:
@@ -55,6 +93,14 @@ def status(run_ref: str | None) -> int:
     state, node_status = refresh(rs)
     node = _node_for(rs)
     alive = node.session_alive(rs.run_id)
+    via_bucket = False
+    if not node_status:
+        storage = storage_config()
+        if storage:                       # node unreachable/wiped -> the mirror
+            node_status = _status_from_bucket(storage, rs.run_id)
+            via_bucket = bool(node_status)
+            if node_status.get("phase") in _FINAL and state.get("phase") not in _FINAL:
+                state = rs.update(phase=node_status["phase"])
     heartbeat = node_status.get("updated")
 
     info = state.get("node", {})
@@ -68,10 +114,11 @@ def status(run_ref: str | None) -> int:
         except ValueError:
             pass
 
+    src = "bucket mirror" if via_bucket else "node"
     print(f"run        {rs.run_id}")
     print(f"target     {state.get('target')} ({info.get('host')})")
     print(f"phase      {state.get('phase')}"
-          + (f"   (node: {node_status.get('phase')}, heartbeat {_age(heartbeat)} ago)"
+          + (f"   ({src}: {node_status.get('phase')}, heartbeat {_age(heartbeat)} ago)"
              if heartbeat else "   (no status.json from node yet)"))
     print(f"session    {'alive' if alive else 'gone'}")
     print(f"started    {state.get('started_at', '?')}{cost}")
@@ -169,21 +216,34 @@ def kill(run_ref: str) -> int:
     return 0
 
 
-def fetch(run_ref: str | None, dest: str | None = None) -> int:
+def fetch(run_ref: str | None, dest: str | None = None, *, via_bucket: bool = False) -> int:
     rs = find_run(run_ref)
     node = _node_for(rs)
     out = Path(dest) if dest else Path.cwd() / "results" / rs.run_id
     out.mkdir(parents=True, exist_ok=True)
-    rdir = node.run_dir(rs.run_id)
-    node.conn.rsync_from(f"{rdir}/artifacts/", out)
-    for f in ("saage.log", "status.json"):
+    storage = storage_config()
+    source = "node"
+    if via_bucket and not storage:
+        raise RuntimeError("--bucket: no [storage] section in credentials.toml")
+    if not via_bucket:
         try:
-            node.conn.rsync_from(f"{rdir}/{f}", out)
+            rdir = node.run_dir(rs.run_id)
+            node.conn.rsync_from(f"{rdir}/artifacts/", out)
+            for f in ("saage.log", "status.json"):
+                try:
+                    node.conn.rsync_from(f"{rdir}/{f}", out)
+                except Exception:
+                    pass
         except Exception:
-            pass
-    rs.event("fetched", dest=str(out))
+            if not storage:
+                raise
+            via_bucket = True            # node gone -> fall back to the mirror
+    if via_bucket:
+        source = "bucket mirror"
+        _fetch_from_bucket(storage, rs.run_id, out)
+    rs.event("fetched", dest=str(out), source=source)
     got = sorted(p.name for p in out.iterdir())
-    print(f"fetched {len(got)} file(s) → {out}")
+    print(f"fetched {len(got)} file(s) from {source} → {out}")
     for name in got:
         print(f"  {name}")
     return 0

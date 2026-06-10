@@ -6,7 +6,7 @@ import sys
 
 from . import observe
 from .creds import (CredsError, add_target, cred_path, ensure_ssh_key,
-                    get_target, list_targets)
+                    get_target, list_targets, storage_config)
 from .handoff import HandoffError, handoff
 from .sshio import SSHError
 from .state import find_run
@@ -69,6 +69,9 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     ft = rsub.add_parser("fetch", help="pull artifacts/ + log back from the node")
     ft.add_argument("run", nargs="?", default=None)
     ft.add_argument("--dest", default=None, help="default: ./results/<run_id>/")
+    ft.add_argument("--bucket", action="store_true",
+                    help="pull from the R2 mirror instead of the node "
+                         "(automatic when the node is unreachable)")
 
 
 def _parse_kv(items: list[str], what: str) -> dict[str, str]:
@@ -103,6 +106,17 @@ def _dispatch(args: argparse.Namespace) -> int:
         print(f"pubkey     {key.with_suffix('.pub').read_text().strip()}")
         print("add the pubkey to the target's ~/.ssh/authorized_keys, then:")
         print("  saage remote add-target <name> --host <host> [--user <user>]")
+        storage = storage_config()
+        if storage:
+            from .observe import _bucket_client
+            probe = "saage-init-probe"
+            client = _bucket_client(storage)
+            client.put_object(Bucket=storage.bucket, Key=probe, Body=b"ok")
+            client.delete_object(Bucket=storage.bucket, Key=probe)
+            print(f"storage    s3://{storage.bucket} @ {storage.endpoint} — writable ✓")
+        else:
+            print("storage    (none — artifacts stay on the node; add a [storage] "
+                  "section for an R2 mirror)")
         return 0
 
     if cmd == "add-target":
@@ -140,5 +154,5 @@ def _dispatch(args: argparse.Namespace) -> int:
     if cmd == "kill":
         return observe.kill(args.run)
     if cmd == "fetch":
-        return observe.fetch(args.run, args.dest)
+        return observe.fetch(args.run, args.dest, via_bucket=args.bucket)
     raise CredsError(f"unknown remote command {cmd!r}")

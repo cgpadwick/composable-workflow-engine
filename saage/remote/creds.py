@@ -65,6 +65,34 @@ class Target:
     key: Path = field(default_factory=ssh_key_path)
 
 
+@dataclass
+class Storage:
+    """An S3-compatible mirror (Cloudflare R2). Optional: with no [storage]
+    section, artifacts live only in the node-side run dir, read over SSH."""
+    endpoint: str
+    bucket: str
+    access_key: str
+    secret_key: str
+    region: str = "auto"
+
+    def run_prefix(self, run_id: str) -> str:
+        return f"runs/{run_id}"
+
+
+def storage_config(creds: dict | None = None) -> Storage | None:
+    creds = load_creds() if creds is None else creds
+    s = creds.get("storage")
+    if not s:
+        return None
+    values = [s.get(k, "") for k in ("endpoint", "bucket", "access_key", "secret_key")]
+    # treat placeholders ("<paste-...>") and blanks as not-yet-configured
+    if any(not v or v.startswith("<") for v in values):
+        return None
+    return Storage(endpoint=s["endpoint"], bucket=s["bucket"],
+                   access_key=s["access_key"], secret_key=s["secret_key"],
+                   region=s.get("region", "auto"))
+
+
 def load_creds() -> dict:
     path = cred_path()
     creds: dict = {}

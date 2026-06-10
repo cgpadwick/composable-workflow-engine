@@ -627,11 +627,16 @@ target, handoff, observe, cli) with offline unit tests plus ssh-gated
 integration tests (`SAAGE_SSH_TESTS=1 pytest tests/remote/`). Deltas from the
 plan above, decided during the build:
 
-- **No bucket at all in v1** (user decision — no R2 account yet): the
-  node-side run dir is the artifact store. The sidecar copies ledgers/results
-  into `~/.saage_runs/<run_id>/artifacts/`; `status`/`logs`/`fetch` read it
-  over SSH. An R2/S3 layer later just mirrors that directory — §5.2's layout
-  is unchanged, only its transport.
+- **The artifact store is two-tier.** The node-side run dir is primary: the
+  sidecar copies ledgers/results into `~/.saage_runs/<run_id>/artifacts/`,
+  and `status`/`logs`/`fetch` read it over SSH. When a `[storage]` section is
+  configured (Cloudflare R2, bucket `saage-data`), the sidecar additionally
+  mirrors `artifacts/` + `status.json` + `saage.log` to
+  `s3://<bucket>/runs/<run_id>/` via `python -m saage.remote.r2push` (boto3,
+  installed into the run venv only when storage is configured), and the
+  laptop falls back to the mirror automatically when the node is unreachable
+  (`status`, `fetch`; or explicitly with `fetch --bucket`). With no
+  `[storage]`, everything works SSH-only.
 - **Engine source travels by rsync of the laptop checkout**, not `git clone`
   of a pinned ref — works for unpushed branches and needs no saage repo
   credential on the node. The manifest does not yet record a saage sha.

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import yaml
 
-from .creds import PROVIDER_ENV, Target, load_creds
+from .creds import PROVIDER_ENV, Storage, Target, storage_config
 from .scripts import RunSpec, bootstrap_sh, start_sh, stop_sh
 from .state import RunState
 from .target import PreflightError, SshTarget
@@ -50,9 +50,18 @@ def _load_flow(flow_path: Path) -> dict:
 
 
 def _collect_secrets(provider_type: str, ws_plan: WorkspacePlan,
-                     extra_env: dict[str, str], run_id: str) -> dict[str, str]:
+                     extra_env: dict[str, str], run_id: str,
+                     storage: Storage | None) -> dict[str, str]:
     """Everything that lands in the node's run_env (0600, deleted at run end)."""
     env: dict[str, str] = {"SAAGE_RUN_ID": run_id}
+    if storage:
+        env.update({
+            "AWS_ACCESS_KEY_ID": storage.access_key,
+            "AWS_SECRET_ACCESS_KEY": storage.secret_key,
+            "SAAGE_R2_ENDPOINT": storage.endpoint,
+            "SAAGE_R2_BUCKET": storage.bucket,
+            "SAAGE_R2_PREFIX": storage.run_prefix(run_id),
+        })
     var = PROVIDER_ENV.get(provider_type)
     if var:
         value = os.environ.get(var)
@@ -98,13 +107,16 @@ def handoff(*, flow: str, target: Target, set_args: dict | None = None,
         Path(declared_ws).expanduser() if declared_ws else None,
         run_id, mode=workspace_mode, dirty=dirty, out_dir=rs.dir,
     )
-    secrets = _collect_secrets(provider_type, ws_plan, extra_env or {}, run_id)
-    rs.event("preflight_ok", ws_mode=ws_plan.mode, dirty_tree=ws_plan.dirty_tree)
+    storage = storage_config()
+    secrets = _collect_secrets(provider_type, ws_plan, extra_env or {}, run_id, storage)
+    rs.event("preflight_ok", ws_mode=ws_plan.mode, dirty_tree=ws_plan.dirty_tree,
+             r2=bool(storage))
 
     # -- record intent ---------------------------------------------------------
     spec = RunSpec(run_id=run_id, flow_file=flow_path.name, ws_mode=ws_plan.mode,
                    set_args=set_args or {}, venv_arg=venv_arg,
-                   sync_interval=sync_interval, max_run_days=max_run_days)
+                   sync_interval=sync_interval, max_run_days=max_run_days,
+                   r2=storage is not None)
     rs.write_manifest({
         "run_id": run_id,
         "flow": str(flow_path),
@@ -120,6 +132,7 @@ def handoff(*, flow: str, target: Target, set_args: dict | None = None,
             "dirty_tree": ws_plan.dirty_tree,
         },
         "secrets_pushed": sorted(secrets),     # names only, never values
+        "bucket": f"s3://{storage.bucket}/{storage.run_prefix(run_id)}" if storage else None,
     })
     rs.update(phase="pushing", target=target.name,
               node={"host": target.host, "user": target.user,

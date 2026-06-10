@@ -32,7 +32,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "boto3"]
+r2 = ["boto3"]    # laptop-side reads of the R2 artifact mirror
 
 [project.scripts]
 saage = "saage.cli:main"
