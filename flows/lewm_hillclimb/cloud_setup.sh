@@ -67,10 +67,18 @@ VIRTUAL_ENV="$PWD/.venv" uv pip install --quiet \
   "stable-worldmodel[train,env] @ git+https://github.com/galilai-group/stable-worldmodel.git@${SWM_REF}" \
   "huggingface_hub[cli,hf_transfer]" \
   trackio \
-  hdf5plugin
+  hdf5plugin \
+  datasets \
+  "stable-pretraining==0.1.6" \
+  "lightning==2.6.4"
+# stable-pretraining/lightning pinned to the known-good local env: an
+# unconstrained resolve once picked stable-pretraining 0.1.4, whose
+# on_train_start calls len() on a bare optimizer -> TypeError at train start.
 # trackio: train.py imports it directly; not a stable-worldmodel dep.
 # hdf5plugin: without it the hdf5 Format plugin silently fails to register
 # and load_dataset reports the misleading "No format detected" for the .h5.
+# datasets: stable_pretraining imports it (data/datasets.py) without
+# declaring it; the old fatter resolution happened to include it.
 .venv/bin/python - <<'PY'
 import torch
 assert torch.cuda.is_available(), (
