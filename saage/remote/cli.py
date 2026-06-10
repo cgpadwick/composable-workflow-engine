@@ -6,15 +6,16 @@ import sys
 
 from . import observe
 from .creds import (CredsError, add_target, cred_path, ensure_ssh_key,
-                    get_target, list_targets, storage_config)
+                    get_target, list_targets, load_creds, storage_config)
 from .handoff import HandoffError, handoff
+from .lambda_api import LambdaAPI, LambdaError, SAAGE_KEY_NAME, pick_instance_type, wait_active, wait_ssh
 from .sshio import SSHError
 from .state import find_run
 from .target import PreflightError, SshTarget
 from .workspace import DirtyWorkspace, WorkspaceError
 
 _ERRORS = (CredsError, HandoffError, PreflightError, WorkspaceError,
-           DirtyWorkspace, SSHError, FileNotFoundError)
+           DirtyWorkspace, SSHError, LambdaError, FileNotFoundError)
 
 
 def add_parser(sub: argparse._SubParsersAction) -> None:
@@ -52,6 +53,18 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
                     help="seconds between artifact/heartbeat collections")
     ho.add_argument("--need-gpu", action="store_true",
                     help="fail preflight if the target has no working GPU")
+
+    sp = rsub.add_parser("spawn", help="launch a Lambda Cloud instance and register it as a target")
+    sp.add_argument("--gpu", default="auto",
+                    help="GPU class (a10/a100/h100/gh200), exact instance type, "
+                         "or 'auto' = cheapest with capacity (default)")
+    sp.add_argument("--name", default=None, help="target name (default: lambda-<hhmm>)")
+    sp.add_argument("--extra-key", action="append", default=[],
+                    help="also authorize this Lambda-registered ssh key name on "
+                         "the node (repeatable)")
+
+    tm = rsub.add_parser("terminate", help="terminate a spawned instance (stops billing)")
+    tm.add_argument("target", help="target name or instance IP")
 
     st = rsub.add_parser("status", help="phase, heartbeat, ledger, log tail")
     st.add_argument("run", nargs="?", default=None, help="run id or prefix (default: latest)")
@@ -160,6 +173,10 @@ def _dispatch(args: argparse.Namespace) -> int:
         print(f"run {rs.run_id} handed off — `saage remote status {rs.run_id}`")
         return 0
 
+    if cmd == "spawn":
+        return _spawn(args)
+    if cmd == "terminate":
+        return _terminate(args)
     if cmd == "status":
         return observe.status(args.run)
     if cmd == "logs":
@@ -171,3 +188,61 @@ def _dispatch(args: argparse.Namespace) -> int:
     if cmd == "fetch":
         return observe.fetch(args.run, args.dest, via_bucket=args.bucket)
     raise CredsError(f"unknown remote command {cmd!r}")
+
+
+def _lambda_api() -> LambdaAPI:
+    key = (load_creds().get("lambda") or {}).get("api_key")
+    if not key:
+        raise CredsError("no [lambda] api_key in credentials.toml — "
+                         "spawn/terminate need the Lambda Cloud API key")
+    return LambdaAPI(key)
+
+
+def _spawn(args: argparse.Namespace) -> int:
+    from datetime import datetime, timezone
+    api = _lambda_api()
+    key_path = ensure_ssh_key()
+    api.ensure_ssh_key(SAAGE_KEY_NAME, key_path.with_suffix(".pub").read_text().strip())
+
+    itype, region, price = pick_instance_type(api.instance_types(), args.gpu)
+    name = args.name or f"lambda-{datetime.now(timezone.utc).strftime('%H%M')}"
+    print(f"launching {itype} in {region} (${price:.2f}/hr) as {name!r} …")
+    iid = api.launch(itype, region, SAAGE_KEY_NAME, f"saage-{name}")
+    inst = wait_active(api, iid)            # terminates the instance on timeout
+    ip = inst["ip"]
+    print(f"instance {iid[:12]}… active at {ip}; waiting for ssh …")
+    wait_ssh(ip, "ubuntu", str(key_path))
+
+    if args.extra_key:                       # let the user's own keys in too
+        registered = {k["name"]: k["public_key"] for k in api.ssh_keys()}
+        extras = [registered[n] for n in args.extra_key if n in registered]
+        missing = [n for n in args.extra_key if n not in registered]
+        if missing:
+            print(f"warning: not registered in Lambda, skipped: {missing}")
+        if extras:
+            from .sshio import SSHConn
+            conn = SSHConn(host=ip, user="ubuntu", key=key_path)
+            conn.run("cat >> ~/.ssh/authorized_keys", input="\n".join(extras) + "\n")
+
+    add_target(name, ip, user="ubuntu", hourly_usd=price)
+    print(f"target {name!r} registered ({ip}, ${price:.2f}/hr) — "
+          f"`saage remote handoff <flow> --target {name}`")
+    print(f"REMEMBER: `saage remote terminate {name}` when done — billing runs until then")
+    return 0
+
+
+def _terminate(args: argparse.Namespace) -> int:
+    api = _lambda_api()
+    host = args.target
+    targets = list_targets()
+    if args.target in targets:
+        host = targets[args.target].host
+    matches = [i for i in api.instances() if i.get("ip") == host]
+    if not matches:
+        statuses = [f'{i.get("ip")}={i["status"]}' for i in api.instances()]
+        raise LambdaError(f"no instance with IP {host}. Account instances: "
+                          f"{', '.join(statuses) or '(none)'}")
+    done = api.terminate([i["id"] for i in matches])
+    for i in done:
+        print(f"terminated {i['id'][:12]}… ({host}) — billing stopped")
+    return 0
