@@ -40,6 +40,7 @@ DANGEROUS = [
     "rmdir /s /q build",
     "del /s /q *.log",
     "format c:",
+    "format D: /q",
     "powershell -c Remove-Item -Recurse -Force C:\\ws",
     "reg delete HKLM\\Software\\Foo /f",
     "vssadmin delete shadows /all",
@@ -63,6 +64,8 @@ SAFE = [
     "rmdir build",                          # non-recursive
     "python del_helper.py",                 # 'del' inside an identifier
     "python format_data.py --csv",          # 'format' without a drive letter
+    "ruff format C:\\proj\\src",            # a path argument, not a drive
+    "cargo fmt && ruff format c:/repo",
     "echo deleted 5 rows",
     "git log --format=oneline",
 ]

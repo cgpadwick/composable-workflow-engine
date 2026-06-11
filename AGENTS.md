@@ -224,9 +224,10 @@ outcomes, files written) at the end. `-v` for tool/output detail, `-q` to quiet.
 
 ## Test your flow before a live run
 
-**Hydrate-check** (no API calls — validates YAML + skill wiring):
+**Hydrate-check** (no API calls — validates YAML + skill wiring; `python3` on
+POSIX, `python` on Windows):
 ```bash
-python3 -c "from saage.hydrate import build_flow; build_flow('flows/<name>/flow.yaml', provider=object(), workspace='/tmp/_chk'); print('ok')"
+python -c "from saage.hydrate import build_flow; build_flow('flows/<name>/flow.yaml', provider=object(), workspace='_chk_ws'); print('ok')"
 ```
 
 Then a **live** run against a real provider with a throwaway `--workspace`. The

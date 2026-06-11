@@ -71,7 +71,10 @@ def find_bash() -> str:
     """
     override = os.environ.get("SAAGE_SHELL")
     if override:
-        return override
+        if _is_cmd(override) or Path(override).is_file() or shutil.which(override):
+            return override
+        raise ShellNotFound(
+            f"SAAGE_SHELL={override!r} is not an executable (and not 'cmd')")
     for cand in (*_git_relative_candidates(), *_conventional_candidates()):
         if cand.is_file():
             return str(cand)
@@ -84,6 +87,13 @@ def find_bash() -> str:
         "at a bash executable (SAAGE_SHELL=cmd forces cmd.exe, for flows "
         "written in that dialect)"
     )
+
+
+def _is_cmd(shell: str) -> bool:
+    """The cmd.exe escape hatch — match `cmd`, `cmd.exe`, or any path to it.
+    ntpath.basename handles both separator styles on every host OS."""
+    import ntpath
+    return ntpath.basename(shell.strip()).lower() in ("cmd", "cmd.exe")
 
 
 def run_shell(command: str, *, cwd, env: dict | None = None,
@@ -102,6 +112,6 @@ def run_shell(command: str, *, cwd, env: dict | None = None,
     if os.name != "nt":
         return subprocess.run(command, shell=True, **kwargs)
     shell = find_bash()
-    if shell.strip().lower() in ("cmd", "cmd.exe"):
+    if _is_cmd(shell):
         return subprocess.run(command, shell=True, **kwargs)
     return subprocess.run([shell, "-c", command], **kwargs)

@@ -132,9 +132,12 @@ has the same latent translation bug — remote scope (§7).
 ## 3. What deliberately does NOT change
 
 - **POSIX behavior.** Every change is layout-detection, an explicit encoding,
-  or a Windows-only branch. The Linux/macOS/WSL2 execution path stays
-  byte-identical (`shell=True` → `/bin/sh`, `bin/` venvs); the one shared
-  delta is D5's extra deny patterns, which never match ordinary POSIX work.
+  or a Windows-only branch. The Linux/macOS/WSL2 *execution* path is unchanged
+  (`shell=True` → `/bin/sh`, `bin/` venvs). Two deliberate cross-platform
+  deltas: D5's extra deny patterns (never match ordinary POSIX work), and
+  D3's strict→`errors=replace` UTF-8 decoding of command/git output — a
+  command emitting invalid UTF-8 used to crash the engine with
+  `UnicodeDecodeError` on Linux too; now it degrades to `�` everywhere.
 - **The engine's mental model.** No new step types, no schema changes, no new
   CLI flags. `{{ python }}` is just another auto-seeded shared value.
 - **Remote handoff.** No functional changes beyond D6/D7's test honesty.
@@ -165,9 +168,11 @@ has the same latent translation bug — remote scope (§7).
 
 1. **Full offline suite green on native Windows** — including the previously
    failing 17, minus justified skips (the literal POSIX-chmod assertion).
-2. **No POSIX regression risk by inspection**: Windows branches are
-   unreachable on POSIX; encoding args are behavior-preserving there (all the
-   repo's files are ASCII/UTF-8). CI on Linux re-verifies on push.
+2. **POSIX deltas are deliberate and bounded**: Windows branches are
+   unreachable on POSIX; the file-IO encoding args are behavior-preserving
+   there (all the repo's files are ASCII/UTF-8); the subprocess-decode change
+   (strict → `errors=replace`) applies everywhere by design (§3). CI on Linux
+   re-verifies on push.
 3. **CLI end-to-end on Windows**: `saage run` of a command-only smoke flow
    (no API key needed) exercising POSIX quoting, `$VAR`, `>>`, venv
    activation, `{{ python }}`, and the run summary — proving the *installed

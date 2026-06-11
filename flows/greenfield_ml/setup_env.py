@@ -128,7 +128,9 @@ def main():
     if not py.exists():
         run([sys.executable, "-m", "venv", str(venv)])
     pip = venv_bin(venv, "pip")
-    run([str(pip), "install", "--quiet", "--upgrade", "pip"])
+    # python -m pip, not pip.exe: on Windows pip refuses to modify itself
+    # when launched via its own exe
+    run([str(py), "-m", "pip", "install", "--quiet", "--upgrade", "pip"])
 
     if have_gpu():
         print("GPU detected -> ml-frameworks stack:", args.stack)

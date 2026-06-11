@@ -81,3 +81,24 @@ def test_venv_ignored_when_absent(tmp_path):
     # no .venv on disk yet (e.g. before `setup`) -> command runs plain
     out = _run_command(file_tools(tmp_path, venv=".venv")).run(command="echo $VIRTUAL_ENV")
     assert str(tmp_path / ".venv") not in out
+
+
+# --------------------------------------------------------------------------- #
+# the auto-seeded {{ python }} interpreter launcher
+# --------------------------------------------------------------------------- #
+def test_python_var_seeded_per_platform(tmp_path):
+    # the flows' `{{ python }}` helper-invocation convention rests on this seed
+    flow_yaml = _write_flow(tmp_path / "flow", "echo hi")
+    shared = run_flow(flow_yaml, provider=object())
+    assert shared["python"] == ("python" if os.name == "nt" else "python3")
+
+
+def test_python_var_overridable_in_shared(tmp_path):
+    flow_dir = tmp_path / "flow"
+    flow_dir.mkdir(parents=True)
+    (flow_dir / "flow.yaml").write_text(
+        "provider: { type: openai, model: x }\n"
+        "shared: { python: python3.12 }\n"
+        "workflow:\n  - { id: t, type: command, run: 'echo hi' }\n")
+    shared = run_flow(flow_dir / "flow.yaml", provider=object())
+    assert shared["python"] == "python3.12"

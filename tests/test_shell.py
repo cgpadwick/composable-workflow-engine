@@ -67,12 +67,37 @@ def test_cwd_is_the_workspace(tmp_path):
 # bash discovery (the Windows-only path)
 # --------------------------------------------------------------------------- #
 def test_saage_shell_override_wins(monkeypatch):
-    monkeypatch.setenv("SAAGE_SHELL", "/custom/bash")
+    import sys
+    monkeypatch.setenv("SAAGE_SHELL", sys.executable)   # any real executable
     find_bash.cache_clear()
     try:
-        assert find_bash() == "/custom/bash"
+        assert find_bash() == sys.executable
     finally:
         find_bash.cache_clear()
+
+
+def test_saage_shell_bogus_override_is_rejected(monkeypatch):
+    # a typo'd override must fail with the curated message, not a confusing
+    # per-command FileNotFoundError
+    from saage.shell import ShellNotFound
+    monkeypatch.setenv("SAAGE_SHELL", "/no/such/bash-xyz")
+    find_bash.cache_clear()
+    try:
+        with pytest.raises(ShellNotFound, match="SAAGE_SHELL"):
+            find_bash()
+    finally:
+        find_bash.cache_clear()
+
+
+def test_saage_shell_cmd_sentinel_accepted_anywhere(monkeypatch):
+    # 'cmd', 'cmd.exe', or a full path to it — all mean the escape hatch
+    for value in ("cmd", "cmd.exe", r"C:\Windows\System32\cmd.exe"):
+        monkeypatch.setenv("SAAGE_SHELL", value)
+        find_bash.cache_clear()
+        try:
+            assert find_bash() == value
+        finally:
+            find_bash.cache_clear()
 
 
 @pytest.mark.skipif(os.name != "nt", reason="bash discovery matters on Windows only")

@@ -69,7 +69,9 @@ DEFAULT_DENY: tuple[str, ...] = (
     #     match ordinary POSIX work) ---
     r"\b(rd|rmdir)\b[^\n]*\s/s\b",                       # recursive dir delete
     r"\bdel\b[^\n]*\s/s\b",                              # recursive file delete
-    r"\bformat(\.com)?\s+[a-z]:",                        # format a drive
+    # format a drive — the colon must end the token, so `ruff format C:\proj`
+    # (a path argument, not a drive) stays allowed
+    r"\bformat(\.com)?\s+[a-z]:(\s|$)",
     r"\bremove-item\b(?=[^\n]*-recurse)(?=[^\n]*-force)",  # PS recursive force delete
     r"\breg(\.exe)?\s+delete\b",                         # registry delete
     r"\bvssadmin\b[^\n]*\bdelete\b",                     # shadow-copy destruction

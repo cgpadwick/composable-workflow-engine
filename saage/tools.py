@@ -88,16 +88,19 @@ def file_tools(root: Path, venv: str | None = None,
     def read_file(path: str) -> str:
         return _resolve(root, path).read_text(encoding="utf-8")
 
+    # newline="\n" on every write: a flow's files must be byte-identical
+    # across OSes — Windows newline translation would CRLF-corrupt e.g. a
+    # bash script or byte-compared fixture an agent writes
     def write_file(path: str, content: str) -> str:
         p = _resolve(root, path)
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(content, encoding="utf-8")
+        p.write_text(content, encoding="utf-8", newline="\n")
         return f"wrote {len(content)} bytes -> {path}"
 
     def append_file(path: str, content: str) -> str:
         p = _resolve(root, path)
         p.parent.mkdir(parents=True, exist_ok=True)
-        with open(p, "a", encoding="utf-8") as f:
+        with open(p, "a", encoding="utf-8", newline="\n") as f:
             f.write(content)
         return f"appended {len(content)} bytes -> {path}"
 
@@ -107,7 +110,7 @@ def file_tools(root: Path, venv: str | None = None,
         n = s.count(old)
         if n != 1:
             raise ValueError(f"`old` must match exactly once (found {n})")
-        p.write_text(s.replace(old, new), encoding="utf-8")
+        p.write_text(s.replace(old, new), encoding="utf-8", newline="\n")
         return f"edited {path}"
 
     def delete_file(path: str) -> str:
