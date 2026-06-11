@@ -128,7 +128,10 @@ class CommandNode(Node):
         shared.setdefault("results", {})[self.id] = out
         _trace(shared, self.id)
         capture_into(shared, out["stdout"], self.captures)
-        return "default"
+        # commands can drive loop checks deterministically by printing
+        # `ACTION: pass|fail|...` (same convention as agent skills); without
+        # one, behavior is unchanged ("default")
+        return _parse_action(out["stdout"])
 
 
 class WaitNode(Node):
